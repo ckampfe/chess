@@ -279,21 +279,31 @@ defmodule Chess.Pieces do
 
   defimpl Piece, for: Pawn do
     def moves(piece, board) do
+      # pawns can only move forward...
+      row_op =
+        case piece.color do
+          :white -> :+
+          :black -> :-
+        end
+
       possible_moves =
         if piece.has_moved? do
           [
-            {piece.column + 1, piece.row + 1},
-            {piece.column - 1, piece.row + 1},
-            {piece.column, piece.row + 1}
+            {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])},
+            {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])},
+            {piece.column, apply(Kernel, row_op, [piece.row, 1])}
           ]
         else
+          # pawns can move 2 on the first move
           [
-            {piece.column + 1, piece.row + 1},
-            {piece.column - 1, piece.row + 1},
-            {piece.column, piece.row + 1},
-            {piece.column, piece.row + 2}
+            {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])},
+            {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])},
+            {piece.column, apply(Kernel, row_op, [piece.row, 1])},
+            {piece.column, apply(Kernel, row_op, [piece.row, 2])}
           ]
         end
+
+      # TODO en passant
 
       possible_moves
       |> Enum.filter(&Board.on_board?(&1))

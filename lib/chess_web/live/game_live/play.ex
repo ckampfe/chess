@@ -14,11 +14,20 @@ defmodule ChessWeb.GameLive.Play do
 
   require Logger
 
-  def mount(params, _session, socket) do
+  def mount(%{"game_id" => game_id} = params, _session, socket) do
+    game_topic = "#{game_id}:game_events"
+
+    :ok = Phoenix.PubSub.subscribe(Chess.PubSub, game_topic)
+
     playing_as =
       case Map.fetch!(params, "playing_as") do
-        "white" -> :white
-        "black" -> :black
+        "white" ->
+          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, :white_taken)
+          :white
+
+        "black" ->
+          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, :black_taken)
+          :black
       end
 
     board = Board.new()
@@ -32,6 +41,8 @@ defmodule ChessWeb.GameLive.Play do
 
     socket =
       socket
+      |> assign(:game_id, game_id)
+      |> assign(:game_topic, game_topic)
       |> assign(:playing_as, playing_as)
       |> assign(:moves, [])
       |> assign(:board, board)
@@ -83,27 +94,40 @@ defmodule ChessWeb.GameLive.Play do
     column = String.to_integer(column)
     row = String.to_integer(row)
 
+    to = {column, row}
+
     socket =
       if socket.assigns.selected_piece do
         cond do
-          {column, row} == Piece.position(socket.assigns.selected_piece) ->
+          to == Piece.position(socket.assigns.selected_piece) ->
             socket
             |> assign(:selected_piece, nil)
             |> assign(:potential_moves, MapSet.new())
 
-          MapSet.member?(socket.assigns.potential_moves, {column, row}) ->
+          MapSet.member?(socket.assigns.potential_moves, to) ->
             {board, piece_taken} =
               Board.move_piece(
                 socket.assigns.board,
                 Piece.position(socket.assigns.selected_piece),
-                {column, row}
+                to
               )
 
             dbg(piece_taken)
 
+            Phoenix.PubSub.broadcast(
+              Chess.PubSub,
+              socket.assigns.game_topic,
+              {
+                :move,
+                socket.assigns.playing_as,
+                Piece.position(socket.assigns.selected_piece),
+                to
+              }
+            )
+
             socket
             |> update(:moves, fn moves ->
-              [{Piece.position(socket.assigns.selected_piece), {column, row}} | moves]
+              [{Piece.position(socket.assigns.selected_piece), to} | moves]
             end)
             |> assign(:selected_piece, nil)
             |> assign(:board, board)
@@ -125,6 +149,40 @@ defmodule ChessWeb.GameLive.Play do
       end
 
     {:noreply, socket}
+  end
+
+  def handle_info(:black_taken, socket) do
+    # TODO register as taken
+    {:noreply, socket}
+  end
+
+  def handle_info(:white_taken, socket) do
+    # TODO register as taken
+    {:noreply, socket}
+  end
+
+  def handle_info({:move, who, from, to} = m, socket) do
+    if who == socket.assigns.playing_as do
+      # do nothing, it's me
+      {:noreply, socket}
+    else
+      # TODO record piece_tao
+      {board, piece_taken} =
+        Board.move_piece(
+          socket.assigns.board,
+          from,
+          to
+        )
+
+      socket =
+        socket
+        |> update(:moves, fn moves ->
+          [{from, to} | moves]
+        end)
+        |> assign(:board, board)
+
+      {:noreply, socket}
+    end
   end
 
   defp my_piece?(board, position, playing_as) do
