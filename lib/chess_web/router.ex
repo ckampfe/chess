@@ -20,7 +20,7 @@ defmodule ChessWeb.Router do
     get "/", PageController, :home
 
     live "/games/new", GameLive.New
-    live "/games/play", GameLive.Play
+    live "/games/:game_id/play", GameLive.Play
   end
 
   # Other scopes may use custom stacks.

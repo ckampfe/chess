@@ -6,10 +6,22 @@ defmodule ChessWeb.GameLive.New do
     <div>
       Play as:
       <div>
-        <.button navigate={~p"/games/play?playing_as=black"}>Black</.button>
-        <.button navigate={~p"/games/play?playing_as=white"}>White</.button>
+        <.button phx-click="new-game" phx-value-playing_as="black">Black</.button>
+        <.button phx-click="new-game" phx-value-playing_as="white">White</.button>
       </div>
     </div>
     """
+  end
+
+  def handle_event("new-game", %{"playing_as" => color}, socket) do
+    # TODO: is this good?
+    # TODO: database stuff instead?
+    game = Ecto.UUID.generate()
+
+    socket =
+      socket
+      |> push_navigate(to: "/games/#{game}/play?playing_as=#{color}")
+
+    {:noreply, socket}
   end
 end

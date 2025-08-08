@@ -1,60 +1,79 @@
 defmodule Chess.Board do
+  alias Chess.Pieces.{King, Queen, Rook, Bishop, Knight, Pawn}
   alias Chess.Piece
 
   def new do
     [
-      # white pieces
-      %Piece{color: :white, kind: :rook, column: 0, row: 0},
-      %Piece{color: :white, kind: :knight, column: 1, row: 0},
-      %Piece{color: :white, kind: :bishop, column: 2, row: 0},
-      %Piece{color: :white, kind: :queen, column: 3, row: 0},
-      %Piece{color: :white, kind: :king, column: 4, row: 0},
-      %Piece{color: :white, kind: :bishop, column: 5, row: 0},
-      %Piece{color: :white, kind: :knight, column: 6, row: 0},
-      %Piece{color: :white, kind: :rook, column: 7, row: 0},
-      # white pawns
-      %Piece{color: :white, kind: :pawn, column: 0, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 1, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 2, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 3, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 4, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 5, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 6, row: 1},
-      %Piece{color: :white, kind: :pawn, column: 7, row: 1},
-      # black pieces
-      %Piece{color: :black, kind: :rook, column: 0, row: 7},
-      %Piece{color: :black, kind: :knight, column: 1, row: 7},
-      %Piece{color: :black, kind: :bishop, column: 2, row: 7},
-      %Piece{color: :black, kind: :queen, column: 3, row: 7},
-      %Piece{color: :black, kind: :king, column: 4, row: 7},
-      %Piece{color: :black, kind: :bishop, column: 5, row: 7},
-      %Piece{color: :black, kind: :knight, column: 6, row: 7},
-      %Piece{color: :black, kind: :rook, column: 7, row: 7},
-      # black pawns
-      %Piece{color: :black, kind: :pawn, column: 0, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 1, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 2, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 3, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 4, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 5, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 6, row: 6},
-      %Piece{color: :black, kind: :pawn, column: 7, row: 6}
+      Rook.new(:white, 0, 0),
+      Knight.new(:white, 1, 0),
+      Bishop.new(:white, 2, 0),
+      Queen.new(:white, 3, 0),
+      King.new(:white, 4, 0),
+      Bishop.new(:white, 5, 0),
+      Knight.new(:white, 6, 0),
+      Rook.new(:white, 7, 0),
+      #
+      Pawn.new(:white, 0, 1),
+      Pawn.new(:white, 1, 1),
+      Pawn.new(:white, 2, 1),
+      Pawn.new(:white, 3, 1),
+      Pawn.new(:white, 4, 1),
+      Pawn.new(:white, 5, 1),
+      Pawn.new(:white, 6, 1),
+      Pawn.new(:white, 7, 1),
+      #
+      Rook.new(:black, 0, 7),
+      Knight.new(:black, 1, 7),
+      Bishop.new(:black, 2, 7),
+      Queen.new(:black, 3, 7),
+      King.new(:black, 4, 7),
+      Bishop.new(:black, 5, 7),
+      Knight.new(:black, 6, 7),
+      Rook.new(:black, 7, 7),
+      #
+      Pawn.new(:black, 0, 6),
+      Pawn.new(:black, 1, 6),
+      Pawn.new(:black, 2, 6),
+      Pawn.new(:black, 3, 6),
+      Pawn.new(:black, 4, 6),
+      Pawn.new(:black, 5, 6),
+      Pawn.new(:black, 6, 6),
+      Pawn.new(:black, 7, 6)
     ]
   end
 
-  def get(board, {column, row}) do
+  def get_piece(board, {column, row}) do
     Enum.find(board, fn piece ->
       piece.column == column && piece.row == row
     end)
   end
 
-  def moves_for_piece(board, position) do
-    case get(board, position) do
-      nil ->
-        MapSet.new(0)
+  def move_piece(board, from, to) do
+    take =
+      Enum.find(board, fn piece ->
+        Piece.position(piece) == to
+      end)
 
-      piece ->
-        Piece.naive_potential_moves(piece)
-    end
+    board =
+      board
+      |> Enum.reject(fn piece ->
+        Piece.position(piece) == to
+      end)
+
+    to_update_idx =
+      Enum.find_index(board, fn piece ->
+        Piece.position(piece) == from
+      end)
+
+    board =
+      List.update_at(board, to_update_idx, fn piece ->
+        Piece.move(piece, to)
+      end)
+
+    {board, take}
+  end
+
+  def on_board?({column, row}) do
+    column <= 7 && row <= 7 && column >= 0 && row >= 0
   end
 end

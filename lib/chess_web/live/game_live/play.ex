@@ -1,3 +1,12 @@
+# TODO
+#
+# - [ ] named games
+# - [ ] games persist state
+# - [x] most moves
+# - [ ] special moves (castle, en passant, etc)
+# - [ ] list of takes
+# - [ ] turns
+
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
 
@@ -12,37 +21,30 @@ defmodule ChessWeb.GameLive.Play do
         "black" -> :black
       end
 
+    board = Board.new()
+
+    {board, row_numbers} =
+      if playing_as == :black do
+        {board, 0..7}
+      else
+        {Enum.reverse(board), 7..0//-1}
+      end
+
     socket =
       socket
       |> assign(:playing_as, playing_as)
       |> assign(:moves, [])
-      |> assign(
-        :board,
-        Board.new()
-      )
-      |> assign(:selected, nil)
+      |> assign(:board, board)
+      |> assign(:row_numbers, row_numbers)
+      |> assign(:selected_piece, nil)
       |> assign(:potential_moves, MapSet.new())
 
     {:ok, socket}
   end
 
   def render(assigns) do
-    Logger.debug(assigns)
-
-    {board, row_numbers} =
-      if assigns.playing_as == :black do
-        {assigns.board, 0..7}
-      else
-        {Enum.reverse(assigns.board), 7..0//-1}
-      end
-
-    assigns =
-      assigns
-      |> assign(:board, board)
-      |> assign(:row_numbers, row_numbers)
-
     ~H"""
-    <div class="flex justify-center">
+    <div class="flex justify-center my-4">
       <div class="border-solid border-2 aspect-square w-160">
         <div
           :for={
@@ -57,11 +59,15 @@ defmodule ChessWeb.GameLive.Play do
                 Enum.zip([0..7, background_color_stream(start_color)])
             }
             class={"
-            #{background_color({column, row}, @selected, @playing_as, @potential_moves, square_color)}
-            w-20 aspect-square flex items-center justify-center"}
+            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
+            w-20 aspect-square flex items-center justify-center select-none"}
             phx-click={"select-position-#{column}-#{row}"}
           >
-            {Piece.repr(Board.get(@board, {column, row}))}
+            {if piece = Board.get_piece(@board, {column, row}) do
+              Piece.repr(piece)
+            else
+              ""
+            end}
           </span>
         </div>
       </div>
@@ -78,25 +84,39 @@ defmodule ChessWeb.GameLive.Play do
     row = String.to_integer(row)
 
     socket =
-      if socket.assigns.selected do
+      if socket.assigns.selected_piece do
         cond do
-          {column, row} == socket.assigns.selected ->
+          {column, row} == Piece.position(socket.assigns.selected_piece) ->
             socket
-            |> assign(:selected, nil)
+            |> assign(:selected_piece, nil)
             |> assign(:potential_moves, MapSet.new())
 
           MapSet.member?(socket.assigns.potential_moves, {column, row}) ->
-            # perform move
+            {board, piece_taken} =
+              Board.move_piece(
+                socket.assigns.board,
+                Piece.position(socket.assigns.selected_piece),
+                {column, row}
+              )
+
+            dbg(piece_taken)
+
             socket
+            |> update(:moves, fn moves ->
+              [{Piece.position(socket.assigns.selected_piece), {column, row}} | moves]
+            end)
+            |> assign(:selected_piece, nil)
+            |> assign(:board, board)
+            |> assign(:potential_moves, MapSet.new())
         end
       else
         cond do
-          my_piece?(socket.assigns.board, {column, row}, socket.assigns.playing_as) ->
+          piece = my_piece?(socket.assigns.board, {column, row}, socket.assigns.playing_as) ->
             socket
-            |> assign(:selected, {column, row})
+            |> assign(:selected_piece, piece)
             |> assign(
               :potential_moves,
-              Board.moves_for_piece(socket.assigns.board, {column, row})
+              Piece.moves(piece, socket.assigns.board)
             )
 
           true ->
@@ -107,16 +127,19 @@ defmodule ChessWeb.GameLive.Play do
     {:noreply, socket}
   end
 
-  defp my_piece?(board, {column, row} = position, playing_as) do
-    piece = Board.get(board, position)
-
-    piece.color == playing_as
+  defp my_piece?(board, position, playing_as) do
+    if piece = Board.get_piece(board, position) do
+      if piece.color == playing_as do
+        piece
+      else
+        nil
+      end
+    end
   end
 
   defp background_color(
-         {column, row} = position,
+         position,
          selected,
-         playing_as,
          potential_moves,
          fallback_color
        ) do
