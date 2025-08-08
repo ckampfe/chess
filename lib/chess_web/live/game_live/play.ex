@@ -41,6 +41,7 @@ defmodule ChessWeb.GameLive.Play do
 
     socket =
       socket
+      |> assign(:to_move, :white)
       |> assign(:game_id, game_id)
       |> assign(:game_topic, game_topic)
       |> assign(:playing_as, playing_as)
@@ -55,6 +56,7 @@ defmodule ChessWeb.GameLive.Play do
 
   def render(assigns) do
     ~H"""
+    <h3 class="m-4">to move: {@to_move}</h3>
     <div class="flex justify-center my-4">
       <div class="border-solid border-2 aspect-square w-160">
         <div
@@ -72,7 +74,7 @@ defmodule ChessWeb.GameLive.Play do
             class={"
             #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
             w-20 aspect-square flex items-center justify-center select-none"}
-            phx-click={"select-position-#{column}-#{row}"}
+            phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
           >
             {if piece = Board.get_piece(@board, {column, row}) do
               Piece.repr(piece)
@@ -129,6 +131,13 @@ defmodule ChessWeb.GameLive.Play do
             |> update(:moves, fn moves ->
               [{Piece.position(socket.assigns.selected_piece), to} | moves]
             end)
+            |> update(:to_move, fn to_move ->
+              if to_move == :white do
+                :black
+              else
+                :white
+              end
+            end)
             |> assign(:selected_piece, nil)
             |> assign(:board, board)
             |> assign(:potential_moves, MapSet.new())
@@ -163,7 +172,7 @@ defmodule ChessWeb.GameLive.Play do
 
   def handle_info({:move, who, from, to} = m, socket) do
     if who == socket.assigns.playing_as do
-      # do nothing, it's me
+      # do nothing, that was my move
       {:noreply, socket}
     else
       # TODO record piece_tao
@@ -179,6 +188,7 @@ defmodule ChessWeb.GameLive.Play do
         |> update(:moves, fn moves ->
           [{from, to} | moves]
         end)
+        |> assign(:to_move, socket.assigns.playing_as)
         |> assign(:board, board)
 
       {:noreply, socket}
