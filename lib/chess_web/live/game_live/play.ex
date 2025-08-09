@@ -76,7 +76,7 @@ defmodule ChessWeb.GameLive.Play do
           </span>
         </div>
       </div>
-      <div class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
+      <div id="board" class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
         <div class="border-solid border-2 aspect-square min-w-80">
           <div
             :for={
