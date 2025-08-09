@@ -203,7 +203,7 @@ defmodule ChessWeb.GameLive.Play do
     {:noreply, socket}
   end
 
-  def handle_info({:move, who, from, to} = m, socket) do
+  def handle_info({:move, who, from, to}, socket) do
     if who == socket.assigns.playing_as do
       # do nothing, that was my move
       {:noreply, socket}
