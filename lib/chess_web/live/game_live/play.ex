@@ -1,13 +1,14 @@
 # TODO
 #
 # - [ ] named games
-# - [ ] games persist state
+# - [ ] load game state on mount
 # - [x] most moves
 # - [ ] special moves (castle, en passant, etc)
 # - [ ] list of takes
 # - [ ] chat
 # - [ ] redirect all non-players to a spectator endpoint
 # - [x] turns
+# - [ ] checkmate
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
@@ -59,33 +60,37 @@ defmodule ChessWeb.GameLive.Play do
   def render(assigns) do
     ~H"""
     <h3 class="m-4">to move: {@to_move}</h3>
-    <div class="flex justify-center my-4">
-      <div class="border-solid border-2 aspect-square w-160">
-        <div
-          :for={
-            {row, start_color} <-
-              Enum.zip([@row_numbers, background_color_stream(:light)])
-          }
-          class="flex"
-        >
-          <span
+    <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
+      <div class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
+        <div class="border-solid border-2 aspect-square min-w-80">
+          <div
             :for={
-              {column, square_color} <-
-                Enum.zip([0..7, background_color_stream(start_color)])
+              {row, start_color} <-
+                Enum.zip([@row_numbers, background_color_stream(:light)])
             }
-            class={"
-            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
-            w-20 aspect-square flex items-center justify-center select-none"}
-            phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
+            class="flex"
           >
-            {if piece = Board.get_piece(@board, {column, row}) do
-              Piece.repr(piece)
-            else
-              ""
-            end}
-          </span>
+            <span
+              :for={
+                {column, square_color} <-
+                  Enum.zip([0..7, background_color_stream(start_color)])
+              }
+              class={"
+            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
+            flex basis-1/8 aspect-square select-none items-center justify-center"}
+              phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
+            >
+              {if piece = Board.get_piece(@board, {column, row}) do
+                Piece.repr(piece)
+              else
+                ""
+              end}
+            </span>
+          </div>
         </div>
       </div>
+      <div id="takes" class="sm:order-3 sm:col-span-1">takes</div>
+      <div id="chat" class="sm:order-1 sm:col-span-2">chat</div>
     </div>
     """
   end
@@ -115,8 +120,6 @@ defmodule ChessWeb.GameLive.Play do
                 Piece.position(socket.assigns.selected_piece),
                 to
               )
-
-            dbg(piece_taken)
 
             Phoenix.PubSub.broadcast(
               Chess.PubSub,
