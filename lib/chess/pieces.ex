@@ -8,6 +8,7 @@
 # - [x] pawn: only move diagonal if there is a take available
 # - [x] pawn: only move straight if there is no other piece
 # - [x] pawn: queen
+# - [ ] tests
 
 defmodule Chess.Pieces do
   alias Chess.{Board, Piece}
@@ -340,7 +341,8 @@ defmodule Chess.Pieces do
           straight_ahead_2 = {piece.column, apply(Kernel, row_op, [piece.row, 2])}
 
           moves =
-            if Board.get_piece(board, straight_ahead_2) do
+            if Board.get_piece(board, straight_ahead_1) ||
+                 Board.get_piece(board, straight_ahead_2) do
               moves
             else
               [straight_ahead_2 | moves]
