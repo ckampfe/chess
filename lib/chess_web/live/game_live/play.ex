@@ -4,7 +4,8 @@
 # - [ ] load game state on mount
 # - [x] most moves
 # - [ ] special moves (castle, en passant, etc)
-# - [ ] list of takes
+# - [x] display list of takes
+# - [ ] compute takes list on mount
 # - [ ] chat
 # - [ ] redirect all non-players to a spectator endpoint
 # - [x] turns
@@ -49,6 +50,8 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:game_topic, game_topic)
       |> assign(:playing_as, playing_as)
       |> assign(:moves, [])
+      |> assign(:takes_white, [])
+      |> assign(:takes_black, [])
       |> assign(:board, board)
       |> assign(:row_numbers, row_numbers)
       |> assign(:selected_piece, nil)
@@ -61,6 +64,18 @@ defmodule ChessWeb.GameLive.Play do
     ~H"""
     <h3 class="m-4">to move: {@to_move}</h3>
     <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
+      <div id="takes" class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4">
+        <div>
+          <span :for={piece <- if(@playing_as == :white, do: @takes_black, else: @takes_white)}>
+            {Piece.repr(piece)}
+          </span>
+        </div>
+        <div>
+          <span :for={piece <- if(@playing_as == :white, do: @takes_white, else: @takes_black)}>
+            {Piece.repr(piece)}
+          </span>
+        </div>
+      </div>
       <div class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
         <div class="border-solid border-2 aspect-square min-w-80">
           <div
@@ -89,7 +104,6 @@ defmodule ChessWeb.GameLive.Play do
           </div>
         </div>
       </div>
-      <div id="takes" class="sm:order-3 sm:col-span-1">takes</div>
       <div id="chat" class="sm:order-1 sm:col-span-2">chat</div>
     </div>
     """
@@ -132,6 +146,13 @@ defmodule ChessWeb.GameLive.Play do
               }
             )
 
+            takes_key =
+              if socket.assigns.playing_as == :white do
+                :takes_white
+              else
+                :takes_black
+              end
+
             socket
             |> update(:moves, fn moves ->
               [{Piece.position(socket.assigns.selected_piece), to} | moves]
@@ -146,6 +167,13 @@ defmodule ChessWeb.GameLive.Play do
             |> assign(:selected_piece, nil)
             |> assign(:board, board)
             |> assign(:potential_moves, MapSet.new())
+            |> update(takes_key, fn takes ->
+              if piece_taken do
+                [piece_taken | takes]
+              else
+                takes
+              end
+            end)
         end
       else
         cond do
@@ -188,6 +216,13 @@ defmodule ChessWeb.GameLive.Play do
           to
         )
 
+      takes_key =
+        if socket.assigns.playing_as == :white do
+          :takes_black
+        else
+          :takes_white
+        end
+
       socket =
         socket
         |> update(:moves, fn moves ->
@@ -195,6 +230,13 @@ defmodule ChessWeb.GameLive.Play do
         end)
         |> assign(:to_move, socket.assigns.playing_as)
         |> assign(:board, board)
+        |> update(takes_key, fn takes ->
+          if piece_taken do
+            [piece_taken | takes]
+          else
+            takes
+          end
+        end)
 
       {:noreply, socket}
     end
