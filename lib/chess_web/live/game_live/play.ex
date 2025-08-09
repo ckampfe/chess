@@ -5,7 +5,9 @@
 # - [x] most moves
 # - [ ] special moves (castle, en passant, etc)
 # - [ ] list of takes
-# - [ ] turns
+# - [ ] chat
+# - [ ] redirect all non-players to a spectator endpoint
+# - [x] turns
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view

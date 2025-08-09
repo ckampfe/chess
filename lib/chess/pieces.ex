@@ -5,8 +5,8 @@
 # - [ ] rook: castling
 # - [x] pawn: first move
 # - [ ] pawn: en passant
-# - [ ] pawn: only move diagonal if there is a take available
-# - [ ] pawn: only move straight if there is no other piece
+# - [x] pawn: only move diagonal if there is a take available
+# - [x] pawn: only move straight if there is no other piece
 # - [x] pawn: queen
 
 defmodule Chess.Pieces do
@@ -288,32 +288,94 @@ defmodule Chess.Pieces do
 
       possible_moves =
         if piece.has_moved? do
-          [
-            {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])},
-            {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])},
-            {piece.column, apply(Kernel, row_op, [piece.row, 1])}
-          ]
+          moves = []
+
+          straight_ahead = {piece.column, apply(Kernel, row_op, [piece.row, 1])}
+
+          moves =
+            if Board.get_piece(board, straight_ahead) do
+              moves
+            else
+              [straight_ahead | moves]
+            end
+
+          diagonal_1 = {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])}
+
+          moves =
+            if other_piece = Board.get_piece(board, diagonal_1) do
+              if other_piece.color != piece.color do
+                [diagonal_1 | moves]
+              else
+                moves
+              end
+            else
+              moves
+            end
+
+          diagonal_2 = {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])}
+
+          if other_piece = Board.get_piece(board, diagonal_2) do
+            if other_piece.color != piece.color do
+              [diagonal_2 | moves]
+            else
+              moves
+            end
+          else
+            moves
+          end
         else
           # pawns can move 2 on the first move
-          [
-            {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])},
-            {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])},
-            {piece.column, apply(Kernel, row_op, [piece.row, 1])},
-            {piece.column, apply(Kernel, row_op, [piece.row, 2])}
-          ]
+
+          moves = []
+
+          straight_ahead_1 = {piece.column, apply(Kernel, row_op, [piece.row, 1])}
+
+          moves =
+            if Board.get_piece(board, straight_ahead_1) do
+              moves
+            else
+              [straight_ahead_1 | moves]
+            end
+
+          straight_ahead_2 = {piece.column, apply(Kernel, row_op, [piece.row, 2])}
+
+          moves =
+            if Board.get_piece(board, straight_ahead_2) do
+              moves
+            else
+              [straight_ahead_2 | moves]
+            end
+
+          diagonal_1 = {piece.column + 1, apply(Kernel, row_op, [piece.row, 1])}
+
+          moves =
+            if other_piece = Board.get_piece(board, diagonal_1) do
+              if other_piece.color != piece.color do
+                [diagonal_1 | moves]
+              else
+                moves
+              end
+            else
+              moves
+            end
+
+          diagonal_2 = {piece.column - 1, apply(Kernel, row_op, [piece.row, 1])}
+
+          if other_piece = Board.get_piece(board, diagonal_2) do
+            if other_piece.color != piece.color do
+              [diagonal_2 | moves]
+            else
+              moves
+            end
+          else
+            moves
+          end
         end
 
       # TODO en passant
 
       possible_moves
       |> Enum.filter(&Board.on_board?(&1))
-      |> Enum.filter(fn position ->
-        if other_piece = Board.get_piece(board, position) do
-          other_piece.color != piece.color
-        else
-          true
-        end
-      end)
       |> MapSet.new()
     end
 
