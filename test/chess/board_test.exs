@@ -76,4 +76,98 @@ defmodule Chess.BoardTest do
     refute Board.on_board?({-1, 4})
     refute Board.on_board?({1, -4})
   end
+
+  test "get_pieces/3" do
+    board = Board.new()
+
+    assert Board.get_pieces(board, King, :black) == [King.new(:black, 4, 7)]
+
+    assert Board.get_pieces(board, Rook, :white) == [
+             Rook.new(:white, 0, 0),
+             Rook.new(:white, 7, 0)
+           ]
+
+    assert Board.get_pieces(board, Queen, :white) == [Queen.new(:white, 3, 0)]
+  end
+
+  describe "calculate_check/1" do
+    test "simple check" do
+      # ........
+      # ........
+      # ........
+      # ....♚...
+      # ...♕....
+      # ........
+      # ........
+      # ........
+
+      board = [
+        King.new(:black, 4, 4),
+        Queen.new(:white, 3, 3)
+      ]
+
+      assert Board.calculate_check(board) == :check
+    end
+
+    test "attack out of check" do
+      # ........
+      # ........
+      # ........
+      # ........
+      # ........
+      # ♙♙......
+      # ♚.♖.....
+      board = [
+        King.new(:black, 0, 0),
+        Pawn.new(:white, 0, 1),
+        Pawn.new(:white, 1, 1),
+        Rook.new(:white, 2, 0)
+      ]
+
+      assert Board.calculate_check(board) == :check
+    end
+
+    test "contained checkmate" do
+      # ........
+      # ...♟♟♟..
+      # ...♟♚♟..
+      # ...♟.♟..
+      # ........
+      # ........
+      # ....♕...
+
+      board = [
+        King.new(:black, 4, 4),
+        Pawn.new(:black, 3, 3),
+        Pawn.new(:black, 3, 4),
+        Pawn.new(:black, 3, 5),
+        Pawn.new(:black, 4, 5),
+        Pawn.new(:black, 5, 5),
+        Pawn.new(:black, 5, 4),
+        Pawn.new(:black, 5, 3),
+        Queen.new(:white, 4, 0)
+      ]
+
+      assert Board.calculate_check(board) == :checkmate
+    end
+
+    test "attack contained checkmate" do
+      # ♚.......
+      # ........
+      # ........
+      # ........
+      # ........
+      # ........
+      # ........
+      # ♖♖......
+
+      board = [
+        King.new(:black, 0, 7),
+        Rook.new(:white, 0, 0),
+        Rook.new(:white, 1, 0)
+      ]
+
+      assert Board.calculate_check(board) == :checkmate
+    end
+  end
 end

@@ -276,6 +276,25 @@ defmodule Chess.Pieces do
     def new(color, column, row) do
       %__MODULE__{color: color, column: column, row: row}
     end
+
+    # shows the possible attacks, with no concern for whether or not they are valid
+    # used only to calculate check/checkmate
+    # TODO is it really worth implementing en passant for check/checkmate?
+    def attacks_naive(piece) do
+      case piece.color do
+        :black ->
+          [
+            {piece.column + 1, piece.row - 1},
+            {piece.column - 1, piece.row - 1}
+          ]
+
+        :white ->
+          [
+            {piece.column + 1, piece.row + 1},
+            {piece.column - 1, piece.row + 1}
+          ]
+      end
+    end
   end
 
   defimpl Piece, for: Pawn do

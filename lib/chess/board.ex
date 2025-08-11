@@ -48,6 +48,69 @@ defmodule Chess.Board do
     end)
   end
 
+  def calculate_check(board) do
+    # for all pieces
+    # is the opposite king attacked
+    # if so, can the king move?
+    # if so, can the player attack the piece that is causing the check?
+    # (is attacking piece in the attacking moves of the player?)
+    # if the king can move, is it in check again?
+    # if the king cannot move out or all move outs are in check, checkmate
+    white_pieces = Enum.filter(board, fn piece -> piece.color == :white end)
+    black_king = get_king(board, :black)
+    king_position = Piece.position(black_king)
+
+    # TODO we need Piece.moves and Piece.attacks,
+    # so we can get hypothetical attacks for all pieces
+    # AND PAWNS, since Piece.moves will not show a valid
+    # attack if there is no enemy piece there
+    all_white_moves =
+      white_pieces
+      |> Enum.flat_map(fn
+        %Pawn{} = piece -> Pawn.attacks_naive(piece)
+        piece -> Piece.moves(piece, board)
+      end)
+      |> MapSet.new()
+
+    # dbg(all_white_moves)
+    # dbg(king_position)
+    # dbg(MapSet.member?(all_white_moves, king_position))
+
+    if MapSet.member?(all_white_moves, king_position) do
+      king_moves = Piece.moves(black_king, board)
+
+      cond do
+        Enum.empty?(king_moves) ->
+          :checkmate
+
+        Enum.all?(king_moves, fn king_move ->
+          MapSet.member?(all_white_moves, king_move)
+        end) ->
+          :checkmate
+
+        true ->
+          :check
+      end
+    else
+      nil
+    end
+  end
+
+  def get_king(board, color) do
+    [king] = get_pieces(board, King, color)
+    king
+  end
+
+  def get_pieces(board, kind, color) do
+    board
+    |> Enum.filter(fn piece ->
+      case piece do
+        %^kind{} when piece.color == color -> true
+        _ -> false
+      end
+    end)
+  end
+
   def move_piece(board, from, to) do
     take =
       Enum.find(board, fn piece ->
@@ -75,5 +138,24 @@ defmodule Chess.Board do
 
   def on_board?({column, row}) do
     column <= 7 && row <= 7 && column >= 0 && row >= 0
+  end
+
+  def render(board) do
+    for row <- 7..0//-1 do
+      for column <- 0..7 do
+        piece =
+          Enum.find(board, fn piece ->
+            piece.column == column && piece.row == row
+          end)
+
+        if piece do
+          Piece.repr(piece)
+        else
+          "."
+        end
+      end
+      |> Enum.join()
+    end
+    |> Enum.join("\n")
   end
 end

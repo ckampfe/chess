@@ -27,11 +27,11 @@ defmodule ChessWeb.GameLive.Play do
     playing_as =
       case Map.fetch!(params, "playing_as") do
         "white" ->
-          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, :white_taken)
+          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, :white})
           :white
 
         "black" ->
-          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, :black_taken)
+          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, :black})
           :black
       end
 
@@ -136,6 +136,9 @@ defmodule ChessWeb.GameLive.Play do
                 to
               )
 
+            # TODO
+            check_status = Board.calculate_check(board)
+
             Phoenix.PubSub.broadcast(
               Chess.PubSub,
               socket.assigns.game_topic,
@@ -194,12 +197,7 @@ defmodule ChessWeb.GameLive.Play do
     {:noreply, socket}
   end
 
-  def handle_info(:black_taken, socket) do
-    # TODO register as taken
-    {:noreply, socket}
-  end
-
-  def handle_info(:white_taken, socket) do
+  def handle_info({:playing_as, color}, socket) do
     # TODO register as taken
     {:noreply, socket}
   end
