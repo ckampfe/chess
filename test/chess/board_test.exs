@@ -169,5 +169,27 @@ defmodule Chess.BoardTest do
 
       assert Board.calculate_check(board) == :checkmate
     end
+
+    test "fast mate" do
+      # ...♛♚♝..
+      # ...♟.♕..
+      # ........
+      # ........
+      # ..♗.....
+      # ........
+      # ........
+      # ........
+
+      board = [
+        King.new(:black, 4, 7),
+        Queen.new(:black, 3, 7),
+        Pawn.new(:black, 3, 6),
+        Bishop.new(:black, 5, 7),
+        Queen.new(:white, 5, 6),
+        Bishop.new(:white, 2, 3)
+      ]
+
+      assert Board.calculate_check(board) == :checkmate
+    end
   end
 end

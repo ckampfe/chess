@@ -50,6 +50,7 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:game_id, game_id)
       |> assign(:game_topic, game_topic)
       |> assign(:playing_as, playing_as)
+      |> assign(:check_status, nil)
       |> assign(:moves, [])
       |> assign(:takes_white, [])
       |> assign(:takes_black, [])
@@ -63,6 +64,7 @@ defmodule ChessWeb.GameLive.Play do
 
   def render(assigns) do
     ~H"""
+    <h1 :if={@check_status}>{@check_status}</h1>
     <h3 class="m-4">to move: {@to_move}</h3>
     <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
       <div id="takes" class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4">
@@ -136,9 +138,6 @@ defmodule ChessWeb.GameLive.Play do
                 to
               )
 
-            # TODO
-            check_status = Board.calculate_check(board)
-
             Phoenix.PubSub.broadcast(
               Chess.PubSub,
               socket.assigns.game_topic,
@@ -157,27 +156,41 @@ defmodule ChessWeb.GameLive.Play do
                 :takes_black
               end
 
-            socket
-            |> update(:moves, fn moves ->
-              [{Piece.position(socket.assigns.selected_piece), to} | moves]
-            end)
-            |> update(:to_move, fn to_move ->
-              if to_move == :white do
-                :black
-              else
-                :white
-              end
-            end)
-            |> assign(:selected_piece, nil)
-            |> assign(:board, board)
-            |> assign(:potential_moves, MapSet.new())
-            |> update(takes_key, fn takes ->
-              if piece_taken do
-                [piece_taken | takes]
-              else
-                takes
-              end
-            end)
+            socket =
+              socket
+              |> update(:moves, fn moves ->
+                [{Piece.position(socket.assigns.selected_piece), to} | moves]
+              end)
+              |> update(:to_move, fn to_move ->
+                if to_move == :white do
+                  :black
+                else
+                  :white
+                end
+              end)
+              |> assign(:selected_piece, nil)
+              |> assign(:board, board)
+              |> assign(:potential_moves, MapSet.new())
+              |> update(takes_key, fn takes ->
+                if piece_taken do
+                  [piece_taken | takes]
+                else
+                  takes
+                end
+              end)
+
+            case Board.calculate_check(board) do
+              :checkmate ->
+                socket
+                |> assign(:to_move, nil)
+                |> assign(:check_status, :checkmate)
+
+              :check ->
+                assign(socket, :check_status, :check)
+
+              _ ->
+                assign(socket, :check_status, nil)
+            end
         end
       else
         cond do
@@ -197,7 +210,7 @@ defmodule ChessWeb.GameLive.Play do
     {:noreply, socket}
   end
 
-  def handle_info({:playing_as, color}, socket) do
+  def handle_info({:playing_as, _color}, socket) do
     # TODO register as taken
     {:noreply, socket}
   end
@@ -236,6 +249,20 @@ defmodule ChessWeb.GameLive.Play do
             takes
           end
         end)
+
+      socket =
+        case Board.calculate_check(board) do
+          :checkmate ->
+            socket
+            |> assign(:to_move, nil)
+            |> assign(:check_status, :checkmate)
+
+          :check ->
+            assign(socket, :check_status, :check)
+
+          _ ->
+            assign(socket, :check_status, nil)
+        end
 
       {:noreply, socket}
     end

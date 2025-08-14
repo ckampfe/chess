@@ -72,9 +72,41 @@ defmodule Chess.Board do
       end)
       |> MapSet.new()
 
-    # dbg(all_white_moves)
-    # dbg(king_position)
-    # dbg(MapSet.member?(all_white_moves, king_position))
+    if MapSet.member?(all_white_moves, king_position) do
+      king_moves = Piece.moves(black_king, board)
+
+      cond do
+        Enum.empty?(king_moves) ->
+          :checkmate
+
+        Enum.all?(king_moves, fn king_move ->
+          calculate_check_once(
+            move_piece(board, {black_king.column, black_king.row}, king_move)
+            |> elem(0)
+          ) in [:check, :checkmate]
+        end) ->
+          :checkmate
+
+        true ->
+          :check
+      end
+    else
+      nil
+    end
+  end
+
+  defp calculate_check_once(board) do
+    white_pieces = Enum.filter(board, fn piece -> piece.color == :white end)
+    black_king = get_king(board, :black)
+    king_position = Piece.position(black_king)
+
+    all_white_moves =
+      white_pieces
+      |> Enum.flat_map(fn
+        %Pawn{} = piece -> Pawn.attacks_naive(piece)
+        piece -> Piece.moves(piece, board)
+      end)
+      |> MapSet.new()
 
     if MapSet.member?(all_white_moves, king_position) do
       king_moves = Piece.moves(black_king, board)
