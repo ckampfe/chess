@@ -9,8 +9,8 @@
 # - [ ] chat
 # - [ ] redirect all non-players to a spectator endpoint
 # - [x] turns
-# - [ ] check
-# - [ ] checkmate
+# - [x] check
+# - [x] checkmate
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
