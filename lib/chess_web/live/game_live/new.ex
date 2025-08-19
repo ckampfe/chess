@@ -1,5 +1,6 @@
 defmodule ChessWeb.GameLive.New do
   use ChessWeb, :live_view
+  alias Chess.{Game, Repo}
 
   def render(assigns) do
     ~H"""
@@ -16,11 +17,14 @@ defmodule ChessWeb.GameLive.New do
   def handle_event("new-game", %{"playing_as" => color}, socket) do
     # TODO: is this good?
     # TODO: database stuff instead?
-    game = Ecto.UUID.generate()
+    # game = Ecto.UUID.generate()
+
+    game =
+      Repo.insert!(%Game{}, returning: [:id])
 
     socket =
       socket
-      |> push_navigate(to: "/games/#{game}/play?playing_as=#{color}")
+      |> push_navigate(to: "/games/#{game.id}/play?playing_as=#{color}")
 
     {:noreply, socket}
   end

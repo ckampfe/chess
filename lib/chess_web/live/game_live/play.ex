@@ -1,21 +1,26 @@
 # TODO
 #
 # - [ ] named games
-# - [ ] load game state on mount
+# - [x] load game state on mount
 # - [x] most moves
 # - [ ] special moves (castle, en passant, etc)
 # - [x] display list of takes
-# - [ ] compute takes list on mount
+# - [x] compute takes list on mount
 # - [ ] chat
 # - [ ] redirect all non-players to a spectator endpoint
 # - [x] turns
 # - [x] check
 # - [x] checkmate
+# - [x] fix board being incorrectly mirrored. is this only
+#       a view problem, or a data storage problem?
+# - [ ] fix allowing moves that do not get king out of check
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
 
-  alias Chess.{Board, Piece}
+  alias Chess.{Board, Piece, Move, Repo}
+
+  import Ecto.Query
 
   require Logger
 
@@ -37,27 +42,83 @@ defmodule ChessWeb.GameLive.Play do
 
     board = Board.new()
 
-    {board, row_numbers} =
+    {board, row_numbers, column_numbers} =
       if playing_as == :black do
-        {board, 0..7}
+        {board, 0..7, 7..0//-1}
       else
-        {Enum.reverse(board), 7..0//-1}
+        {Enum.reverse(board), 7..0//-1, 0..7}
+      end
+
+    moves =
+      Move
+      |> where([m], m.game_id == ^game_id)
+      |> order_by([m], asc: m.inserted_at)
+      |> select([m], {{m.from_column, m.from_row}, {m.to_column, m.to_row}})
+      |> Repo.all()
+
+    {board, takes} =
+      Enum.reduce(moves, {board, []}, fn {from, to}, {board, takes} ->
+        {board, take} =
+          Board.move_piece(
+            board,
+            from,
+            to
+          )
+
+        if take do
+          {board, [take | takes]}
+        else
+          {board, takes}
+        end
+      end)
+
+    takes =
+      Enum.group_by(takes, fn piece ->
+        piece.color
+      end)
+
+    takes_white =
+      Map.get(takes, :white, [])
+
+    takes_black =
+      Map.get(takes, :black, [])
+
+    to_move =
+      if rem(Enum.count(moves), 2) == 0 do
+        :white
+      else
+        :black
       end
 
     socket =
       socket
-      |> assign(:to_move, :white)
+      |> assign(:to_move, to_move)
       |> assign(:game_id, game_id)
       |> assign(:game_topic, game_topic)
       |> assign(:playing_as, playing_as)
       |> assign(:check_status, nil)
-      |> assign(:moves, [])
-      |> assign(:takes_white, [])
-      |> assign(:takes_black, [])
+      |> assign(:moves, moves)
+      |> assign(:takes_white, takes_white)
+      |> assign(:takes_black, takes_black)
       |> assign(:board, board)
+      |> assign(:column_numbers, column_numbers)
       |> assign(:row_numbers, row_numbers)
       |> assign(:selected_piece, nil)
       |> assign(:potential_moves, MapSet.new())
+
+    socket =
+      case Board.calculate_check(board) do
+        :checkmate ->
+          socket
+          |> assign(:to_move, nil)
+          |> assign(:check_status, :checkmate)
+
+        :check ->
+          assign(socket, :check_status, :check)
+
+        _ ->
+          assign(socket, :check_status, nil)
+      end
 
     {:ok, socket}
   end
@@ -91,7 +152,7 @@ defmodule ChessWeb.GameLive.Play do
             <span
               :for={
                 {column, square_color} <-
-                  Enum.zip([0..7, background_color_stream(start_color)])
+                  Enum.zip([@column_numbers, background_color_stream(start_color)])
               }
               class={"
             #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
@@ -138,6 +199,17 @@ defmodule ChessWeb.GameLive.Play do
                 to
               )
 
+            {from_column, from_row} = Piece.position(socket.assigns.selected_piece)
+
+            %Move{
+              from_column: from_column,
+              from_row: from_row,
+              to_column: column,
+              to_row: row,
+              game_id: socket.assigns.game_id
+            }
+            |> Repo.insert!()
+
             Phoenix.PubSub.broadcast(
               Chess.PubSub,
               socket.assigns.game_topic,
@@ -158,10 +230,10 @@ defmodule ChessWeb.GameLive.Play do
 
             socket =
               socket
-              |> update(:moves, fn moves ->
+              |> Phoenix.Component.update(:moves, fn moves ->
                 [{Piece.position(socket.assigns.selected_piece), to} | moves]
               end)
-              |> update(:to_move, fn to_move ->
+              |> Phoenix.Component.update(:to_move, fn to_move ->
                 if to_move == :white do
                   :black
                 else
@@ -171,7 +243,7 @@ defmodule ChessWeb.GameLive.Play do
               |> assign(:selected_piece, nil)
               |> assign(:board, board)
               |> assign(:potential_moves, MapSet.new())
-              |> update(takes_key, fn takes ->
+              |> Phoenix.Component.update(takes_key, fn takes ->
                 if piece_taken do
                   [piece_taken | takes]
                 else
@@ -237,12 +309,12 @@ defmodule ChessWeb.GameLive.Play do
 
       socket =
         socket
-        |> update(:moves, fn moves ->
+        |> Phoenix.Component.update(:moves, fn moves ->
           [{from, to} | moves]
         end)
         |> assign(:to_move, socket.assigns.playing_as)
         |> assign(:board, board)
-        |> update(takes_key, fn takes ->
+        |> Phoenix.Component.update(takes_key, fn takes ->
           if piece_taken do
             [piece_taken | takes]
           else
