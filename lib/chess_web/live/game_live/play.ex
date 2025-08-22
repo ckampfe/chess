@@ -18,7 +18,7 @@
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
 
-  alias Chess.{Board, Piece, Move, Repo}
+  alias Chess.{Board, Piece, Move, Repo, ChatMessage}
 
   import Ecto.Query
 
@@ -56,6 +56,13 @@ defmodule ChessWeb.GameLive.Play do
       |> select([m], {{m.from_column, m.from_row}, {m.to_column, m.to_row}})
       |> Repo.all()
 
+    chat_messages =
+      ChatMessage
+      |> where([m], m.game_id == ^game_id)
+      |> order_by([m], asc: m.inserted_at)
+      |> select([m], %{timestamp: m.inserted_at, who: m.who, body: m.body})
+      |> Repo.all()
+
     {board, takes} =
       Enum.reduce(moves, {board, []}, fn {from, to}, {board, takes} ->
         {board, take} =
@@ -90,6 +97,10 @@ defmodule ChessWeb.GameLive.Play do
         :black
       end
 
+    # form: to_form(Accounts.change_user(%User{}))
+
+    chat_input_form = to_form(%{"input" => {}})
+
     socket =
       socket
       |> assign(:to_move, to_move)
@@ -105,6 +116,8 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:row_numbers, row_numbers)
       |> assign(:selected_piece, nil)
       |> assign(:potential_moves, MapSet.new())
+      |> assign(:chat_messages, chat_messages)
+      |> assign(:chat_input_form, chat_input_form)
 
     socket =
       case Board.calculate_check(board) do
@@ -125,50 +138,72 @@ defmodule ChessWeb.GameLive.Play do
 
   def render(assigns) do
     ~H"""
-    <h1 :if={@check_status}>{@check_status}</h1>
-    <h3 class="m-4">to move: {@to_move}</h3>
-    <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
-      <div id="takes" class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4">
-        <div>
-          <span :for={piece <- if(@playing_as == :white, do: @takes_black, else: @takes_white)}>
-            {Piece.repr(piece)}
-          </span>
-        </div>
-        <div>
-          <span :for={piece <- if(@playing_as == :white, do: @takes_white, else: @takes_black)}>
-            {Piece.repr(piece)}
-          </span>
-        </div>
-      </div>
-      <div id="board" class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
-        <div class="border-solid border-2 aspect-square min-w-80">
-          <div
-            :for={
-              {row, start_color} <-
-                Enum.zip([@row_numbers, background_color_stream(:light)])
-            }
-            class="flex"
-          >
-            <span
-              :for={
-                {column, square_color} <-
-                  Enum.zip([@column_numbers, background_color_stream(start_color)])
-              }
-              class={"
-            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
-            flex basis-1/8 aspect-square select-none items-center justify-center"}
-              phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
-            >
-              {if piece = Board.get_piece(@board, {column, row}) do
-                Piece.repr(piece)
-              else
-                ""
-              end}
+    <div class="max-h-screen m-2">
+      <h1 :if={@check_status}>{@check_status}</h1>
+      <h3 class="m-4">to move: {@to_move}</h3>
+      <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
+        <div id="takes" class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4">
+          <div>
+            <span :for={piece <- if(@playing_as == :white, do: @takes_black, else: @takes_white)}>
+              {Piece.repr(piece)}
+            </span>
+          </div>
+          <div>
+            <span :for={piece <- if(@playing_as == :white, do: @takes_white, else: @takes_black)}>
+              {Piece.repr(piece)}
             </span>
           </div>
         </div>
+        <div id="board" class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
+          <div class="border-solid border-2 aspect-square min-w-80">
+            <div
+              :for={
+                {row, start_color} <-
+                  Enum.zip([@row_numbers, background_color_stream(:light)])
+              }
+              class="flex"
+            >
+              <span
+                :for={
+                  {column, square_color} <-
+                    Enum.zip([@column_numbers, background_color_stream(start_color)])
+                }
+                class={"
+            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
+            flex basis-1/8 aspect-square select-none items-center justify-center"}
+                phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
+              >
+                {if piece = Board.get_piece(@board, {column, row}) do
+                  Piece.repr(piece)
+                else
+                  ""
+                end}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div id="chat" class="sm:order-1 sm:col-span-2 sm:max-h-screen">
+          <div
+            class="overflow-y-scroll max-h-72 sm:max-h-8/10"
+            id="chat-scroller"
+            phx-hook="ScrollToBottom"
+          >
+            <div :for={message <- @chat_messages}>
+              <div>
+                <span class="text-lg">{message.who}</span>
+                <span class="text-xs">{message.timestamp}</span>
+              </div>
+              <div>{message.body}</div>
+            </div>
+          </div>
+          <.form for={@chat_input_form} phx-change="update-chat-input" phx-submit="send-chat-message">
+            <.input type="text" field={@chat_input_form[:chat_input]} required />
+            <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+              Send
+            </button>
+          </.form>
+        </div>
       </div>
-      <div id="chat" class="sm:order-1 sm:col-span-2">chat</div>
     </div>
     """
   end
@@ -277,6 +312,55 @@ defmodule ChessWeb.GameLive.Play do
           true ->
             socket
         end
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("update-chat-input", params, socket) do
+    chat_input_form = to_form(params)
+    {:noreply, assign(socket, :chat_input_form, chat_input_form)}
+  end
+
+  def handle_event("send-chat-message", %{"chat_input" => chat_input}, socket) do
+    out =
+      %ChatMessage{
+        game_id: socket.assigns.game_id,
+        who:
+          case socket.assigns.playing_as do
+            :white -> "white"
+            :black -> "black"
+          end,
+        body: chat_input
+      }
+      |> Repo.insert!(returning: [:inserted_at, :who, :body])
+
+    chat_message = %{timestamp: out.inserted_at, who: out.who, body: out.body}
+
+    socket =
+      socket
+      |> assign(:chat_input_form, to_form(%{}))
+      |> Phoenix.Component.update(:chat_messages, fn chat_messages ->
+        chat_messages ++ [chat_message]
+      end)
+
+    Phoenix.PubSub.broadcast(
+      Chess.PubSub,
+      socket.assigns.game_topic,
+      {:chat_message, chat_message, socket.assigns.playing_as}
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:chat_message, chat_message, who}, socket) do
+    socket =
+      if who != socket.assigns.playing_as do
+        Phoenix.Component.update(socket, :chat_messages, fn chat_messages ->
+          chat_messages ++ [chat_message]
+        end)
+      else
+        socket
       end
 
     {:noreply, socket}

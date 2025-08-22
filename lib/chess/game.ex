@@ -6,6 +6,8 @@ defmodule Chess.Game do
   @foreign_key_type :binary_id
   schema "games" do
     has_many :moves, Chess.Move
+    has_many :chat_messages, Chess.ChatMessage
+
     timestamps(type: :utc_datetime)
   end
 
