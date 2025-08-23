@@ -15,10 +15,6 @@ defmodule ChessWeb.GameLive.New do
   end
 
   def handle_event("new-game", %{"playing_as" => color}, socket) do
-    # TODO: is this good?
-    # TODO: database stuff instead?
-    # game = Ecto.UUID.generate()
-
     game =
       Repo.insert!(%Game{}, returning: [:id])
 

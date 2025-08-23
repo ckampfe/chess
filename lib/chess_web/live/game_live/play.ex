@@ -6,7 +6,7 @@
 # - [ ] special moves (castle, en passant, etc)
 # - [x] display list of takes
 # - [x] compute takes list on mount
-# - [ ] chat
+# - [x] chat
 # - [ ] redirect all non-players to a spectator endpoint
 # - [x] turns
 # - [x] check
