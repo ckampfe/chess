@@ -13,7 +13,7 @@
 # - [x] checkmate
 # - [x] fix board being incorrectly mirrored. is this only
 #       a view problem, or a data storage problem?
-# - [ ] fix allowing moves that do not get king out of check
+# - [x] fix allowing moves that do not get king out of check
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
@@ -302,12 +302,42 @@ defmodule ChessWeb.GameLive.Play do
       else
         cond do
           piece = my_piece?(socket.assigns.board, {column, row}, socket.assigns.playing_as) ->
-            socket
-            |> assign(:selected_piece, piece)
-            |> assign(
-              :potential_moves,
-              Piece.moves(piece, socket.assigns.board)
-            )
+            potential_moves = Piece.moves(piece, socket.assigns.board)
+
+            if socket.assigns.check_status == :check do
+              # if there are any potential moves that remove check
+              moves_that_get_us_out_of_check =
+                Enum.filter(potential_moves, fn potential_move ->
+                  {board, _piece_taken} =
+                    Board.move_piece(
+                      socket.assigns.board,
+                      {column, row},
+                      potential_move
+                    )
+
+                  case Board.calculate_check(board) do
+                    :check -> nil
+                    :checkmate -> nil
+                    nil -> true
+                  end
+                end)
+                |> MapSet.new()
+
+              if !Enum.empty?(moves_that_get_us_out_of_check) do
+                socket
+                |> assign(:selected_piece, piece)
+                |> assign(:potential_moves, moves_that_get_us_out_of_check)
+              else
+                socket
+              end
+            else
+              socket
+              |> assign(:selected_piece, piece)
+              |> assign(
+                :potential_moves,
+                potential_moves
+              )
+            end
 
           true ->
             socket
