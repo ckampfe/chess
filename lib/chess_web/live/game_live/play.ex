@@ -24,21 +24,22 @@ defmodule ChessWeb.GameLive.Play do
 
   require Logger
 
-  def mount(%{"game_id" => game_id} = params, _session, socket) do
+  def mount(params, _session, socket) do
+    params_types = %{
+      game_id: Ecto.UUID,
+      playing_as: Ecto.ParameterizedType.init(Ecto.Enum, values: [:white, :black])
+    }
+
+    %{game_id: game_id, playing_as: playing_as} =
+      Ecto.Changeset.cast({%{}, params_types}, params, Map.keys(params_types))
+      |> Ecto.Changeset.validate_required(Map.keys(params_types))
+      |> Ecto.Changeset.apply_action!(nil)
+
     game_topic = "#{game_id}:game_events"
 
     :ok = Phoenix.PubSub.subscribe(Chess.PubSub, game_topic)
 
-    playing_as =
-      case Map.fetch!(params, "playing_as") do
-        "white" ->
-          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, :white})
-          :white
-
-        "black" ->
-          Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, :black})
-          :black
-      end
+    Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, playing_as})
 
     board = Board.new()
 
@@ -63,32 +64,12 @@ defmodule ChessWeb.GameLive.Play do
       |> select([m], %{timestamp: m.inserted_at, who: m.who, body: m.body})
       |> Repo.all()
 
-    {board, takes} =
-      Enum.reduce(moves, {board, []}, fn {from, to}, {board, takes} ->
-        {board, take} =
-          Board.move_piece(
-            board,
-            from,
-            to
-          )
+    {board, takes} = Board.update_with_moves(board, moves)
 
-        if take do
-          {board, [take | takes]}
-        else
-          {board, takes}
-        end
-      end)
-
-    takes =
+    takes_by_color =
       Enum.group_by(takes, fn piece ->
         piece.color
       end)
-
-    takes_white =
-      Map.get(takes, :white, [])
-
-    takes_black =
-      Map.get(takes, :black, [])
 
     to_move =
       if rem(Enum.count(moves), 2) == 0 do
@@ -96,8 +77,6 @@ defmodule ChessWeb.GameLive.Play do
       else
         :black
       end
-
-    # form: to_form(Accounts.change_user(%User{}))
 
     chat_input_form = to_form(%{"input" => {}})
 
@@ -109,8 +88,8 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:playing_as, playing_as)
       |> assign(:check_status, nil)
       |> assign(:moves, moves)
-      |> assign(:takes_white, takes_black)
-      |> assign(:takes_black, takes_white)
+      |> assign(:takes_white, Map.get(takes_by_color, :black, []))
+      |> assign(:takes_black, Map.get(takes_by_color, :white, []))
       |> assign(:board, board)
       |> assign(:column_numbers, column_numbers)
       |> assign(:row_numbers, row_numbers)
@@ -208,140 +187,193 @@ defmodule ChessWeb.GameLive.Play do
     """
   end
 
+  # this is the case where a piece is currently selected
   def handle_event(
         <<"select-position-", column::binary-1, "-", row::binary-1>>,
         _unsigned_params,
-        socket
-      ) do
-    column = String.to_integer(column)
-    row = String.to_integer(row)
+        %{assigns: %{selected_piece: selected_piece}} = socket
+      )
+      when not is_nil(selected_piece) do
+    params_types = %{
+      column: :integer,
+      row: :integer
+    }
+
+    %{column: column, row: row} =
+      Ecto.Changeset.cast(
+        {%{}, params_types},
+        %{column: column, row: row},
+        Map.keys(params_types)
+      )
+      |> Ecto.Changeset.validate_number(:column,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 7
+      )
+      |> Ecto.Changeset.validate_number(:row,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 7
+      )
+      |> Ecto.Changeset.validate_required(Map.keys(params_types))
+      |> Ecto.Changeset.apply_action!(nil)
 
     to = {column, row}
 
     socket =
-      if socket.assigns.selected_piece do
-        cond do
-          to == Piece.position(socket.assigns.selected_piece) ->
-            socket
-            |> assign(:selected_piece, nil)
-            |> assign(:potential_moves, MapSet.new())
+      cond do
+        to == Piece.position(socket.assigns.selected_piece) ->
+          socket
+          |> assign(:selected_piece, nil)
+          |> assign(:potential_moves, MapSet.new())
 
-          MapSet.member?(socket.assigns.potential_moves, to) ->
-            {board, piece_taken} =
-              Board.move_piece(
-                socket.assigns.board,
-                Piece.position(socket.assigns.selected_piece),
-                to
-              )
-
-            {from_column, from_row} = Piece.position(socket.assigns.selected_piece)
-
-            %Move{
-              from_column: from_column,
-              from_row: from_row,
-              to_column: column,
-              to_row: row,
-              game_id: socket.assigns.game_id
-            }
-            |> Repo.insert!()
-
-            Phoenix.PubSub.broadcast(
-              Chess.PubSub,
-              socket.assigns.game_topic,
-              {
-                :move,
-                socket.assigns.playing_as,
-                Piece.position(socket.assigns.selected_piece),
-                to
-              }
+        MapSet.member?(socket.assigns.potential_moves, to) ->
+          {board, piece_taken} =
+            Board.move_piece(
+              socket.assigns.board,
+              Piece.position(socket.assigns.selected_piece),
+              to
             )
 
-            takes_key =
-              if socket.assigns.playing_as == :white do
-                :takes_white
-              else
-                :takes_black
-              end
+          {from_column, from_row} = Piece.position(socket.assigns.selected_piece)
 
-            socket =
-              socket
-              |> Phoenix.Component.update(:moves, fn moves ->
-                [{Piece.position(socket.assigns.selected_piece), to} | moves]
-              end)
-              |> Phoenix.Component.update(:to_move, fn to_move ->
-                if to_move == :white do
-                  :black
-                else
-                  :white
-                end
-              end)
-              |> assign(:selected_piece, nil)
-              |> assign(:board, board)
-              |> assign(:potential_moves, MapSet.new())
-              |> Phoenix.Component.update(takes_key, fn takes ->
-                if piece_taken do
-                  [piece_taken | takes]
-                else
-                  takes
-                end
-              end)
+          %Move{
+            from_column: from_column,
+            from_row: from_row,
+            to_column: column,
+            to_row: row,
+            game_id: socket.assigns.game_id
+          }
+          |> Repo.insert!()
 
-            case Board.calculate_check(board) do
-              :checkmate ->
-                socket
-                |> assign(:to_move, nil)
-                |> assign(:check_status, :checkmate)
+          Phoenix.PubSub.broadcast(
+            Chess.PubSub,
+            socket.assigns.game_topic,
+            {
+              :move,
+              socket.assigns.playing_as,
+              Piece.position(socket.assigns.selected_piece),
+              to
+            }
+          )
 
-              :check ->
-                assign(socket, :check_status, :check)
-
-              _ ->
-                assign(socket, :check_status, nil)
-            end
-        end
-      else
-        cond do
-          piece = my_piece?(socket.assigns.board, {column, row}, socket.assigns.playing_as) ->
-            potential_moves = Piece.moves(piece, socket.assigns.board)
-
-            if socket.assigns.check_status == :check do
-              # if there are any potential moves that remove check
-              moves_that_get_us_out_of_check =
-                Enum.filter(potential_moves, fn potential_move ->
-                  {board, _piece_taken} =
-                    Board.move_piece(
-                      socket.assigns.board,
-                      {column, row},
-                      potential_move
-                    )
-
-                  case Board.calculate_check(board) do
-                    :check -> nil
-                    :checkmate -> nil
-                    nil -> true
-                  end
-                end)
-                |> MapSet.new()
-
-              if !Enum.empty?(moves_that_get_us_out_of_check) do
-                socket
-                |> assign(:selected_piece, piece)
-                |> assign(:potential_moves, moves_that_get_us_out_of_check)
-              else
-                socket
-              end
+          takes_key =
+            if socket.assigns.playing_as == :white do
+              :takes_white
             else
+              :takes_black
+            end
+
+          socket =
+            socket
+            |> Phoenix.Component.update(:moves, fn moves ->
+              [{Piece.position(socket.assigns.selected_piece), to} | moves]
+            end)
+            |> Phoenix.Component.update(:to_move, fn to_move ->
+              if to_move == :white do
+                :black
+              else
+                :white
+              end
+            end)
+            |> assign(:selected_piece, nil)
+            |> assign(:board, board)
+            |> assign(:potential_moves, MapSet.new())
+            |> Phoenix.Component.update(takes_key, fn takes ->
+              if piece_taken do
+                [piece_taken | takes]
+              else
+                takes
+              end
+            end)
+
+          case Board.calculate_check(board) do
+            :checkmate ->
+              socket
+              |> assign(:to_move, nil)
+              |> assign(:check_status, :checkmate)
+
+            :check ->
+              assign(socket, :check_status, :check)
+
+            _ ->
+              assign(socket, :check_status, nil)
+          end
+      end
+
+    {:noreply, socket}
+  end
+
+  # this is the case where no piece is currently selected
+  def handle_event(
+        <<"select-position-", column::binary-1, "-", row::binary-1>>,
+        _unsigned_params,
+        %{assigns: %{selected_piece: nil}} = socket
+      ) do
+    params_types = %{
+      column: :integer,
+      row: :integer
+    }
+
+    %{column: column, row: row} =
+      Ecto.Changeset.cast(
+        {%{}, params_types},
+        %{column: column, row: row},
+        Map.keys(params_types)
+      )
+      |> Ecto.Changeset.validate_number(:column,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 7
+      )
+      |> Ecto.Changeset.validate_number(:row,
+        greater_than_or_equal_to: 0,
+        less_than_or_equal_to: 7
+      )
+      |> Ecto.Changeset.validate_required(Map.keys(params_types))
+      |> Ecto.Changeset.apply_action!(nil)
+
+    socket =
+      if piece =
+           get_piece_if_mine(socket.assigns.board, {column, row}, socket.assigns.playing_as) do
+        potential_moves = Piece.moves(piece, socket.assigns.board)
+
+        case socket.assigns.check_status do
+          :check ->
+            # if we are in check, the only legal moves
+            # are moves that get us out of check
+            moves_that_get_us_out_of_check =
+              Enum.filter(potential_moves, fn potential_move ->
+                {board, _piece_taken} =
+                  Board.move_piece(
+                    socket.assigns.board,
+                    {column, row},
+                    potential_move
+                  )
+
+                case Board.calculate_check(board) do
+                  :check -> nil
+                  :checkmate -> nil
+                  nil -> true
+                end
+              end)
+              |> MapSet.new()
+
+            if !Enum.empty?(moves_that_get_us_out_of_check) do
               socket
               |> assign(:selected_piece, piece)
-              |> assign(
-                :potential_moves,
-                potential_moves
-              )
+              |> assign(:potential_moves, moves_that_get_us_out_of_check)
+            else
+              socket
             end
 
-          true ->
+          _ ->
             socket
+            |> assign(:selected_piece, piece)
+            |> assign(
+              :potential_moves,
+              potential_moves
+            )
         end
+      else
+        socket
       end
 
     {:noreply, socket}
@@ -454,7 +486,7 @@ defmodule ChessWeb.GameLive.Play do
     end
   end
 
-  defp my_piece?(board, position, playing_as) do
+  defp get_piece_if_mine(board, position, playing_as) do
     if piece = Board.get_piece(board, position) do
       if piece.color == playing_as do
         piece

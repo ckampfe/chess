@@ -42,7 +42,24 @@ defmodule Chess.Board do
     ]
   end
 
-  def get_piece(board, {column, row}) do
+  def update_with_moves(board, moves) do
+    Enum.reduce(moves, {board, []}, fn {from, to}, {board, takes} ->
+      {board, take} =
+        move_piece(
+          board,
+          from,
+          to
+        )
+
+      if take do
+        {board, [take | takes]}
+      else
+        {board, takes}
+      end
+    end)
+  end
+
+  def get_piece(board, {column, row} = _position) do
     Enum.find(board, fn piece ->
       piece.column == column && piece.row == row
     end)
