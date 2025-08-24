@@ -367,7 +367,6 @@ defmodule ChessWeb.GameLive.Play do
                 end
               end)
               |> MapSet.new()
-              |> dbg()
 
             if !Enum.empty?(moves_that_get_us_out_of_check) do
               socket
