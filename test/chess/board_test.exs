@@ -106,7 +106,7 @@ defmodule Chess.BoardTest do
         Queen.new(:white, 3, 3)
       ]
 
-      assert Board.calculate_check(board) == :check
+      assert Board.calculate_check(board, :white) == :check
     end
 
     test "attack out of check" do
@@ -124,7 +124,7 @@ defmodule Chess.BoardTest do
         Rook.new(:white, 2, 0)
       ]
 
-      assert Board.calculate_check(board) == :check
+      assert Board.calculate_check(board, :white) == :check
     end
 
     test "contained checkmate" do
@@ -148,7 +148,7 @@ defmodule Chess.BoardTest do
         Queen.new(:white, 4, 0)
       ]
 
-      assert Board.calculate_check(board) == :checkmate
+      assert Board.calculate_check(board, :white) == :checkmate
     end
 
     test "attack contained checkmate" do
@@ -167,7 +167,7 @@ defmodule Chess.BoardTest do
         Rook.new(:white, 1, 0)
       ]
 
-      assert Board.calculate_check(board) == :checkmate
+      assert Board.calculate_check(board, :white) == :checkmate
     end
 
     test "fast mate" do
@@ -189,7 +189,7 @@ defmodule Chess.BoardTest do
         Bishop.new(:white, 2, 3)
       ]
 
-      assert Board.calculate_check(board) == :checkmate
+      assert Board.calculate_check(board, :white) == :checkmate
     end
   end
 end

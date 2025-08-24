@@ -65,13 +65,13 @@ defmodule Chess.Board do
     end)
   end
 
-  def calculate_check(board, color) do
-    my_pieces = Enum.filter(board, fn piece -> piece.color == color end)
+  def calculate_check(board, attacking_color) do
+    my_pieces = Enum.filter(board, fn piece -> piece.color == attacking_color end)
 
     enemy_king =
       get_king(
         board,
-        case color do
+        case attacking_color do
           :white -> :black
           :black -> :white
         end
@@ -98,7 +98,7 @@ defmodule Chess.Board do
           calculate_check_once(
             move_piece(board, {enemy_king.column, enemy_king.row}, king_move)
             |> elem(0),
-            color
+            attacking_color
           ) in [:check, :checkmate]
         end) ->
           :checkmate
@@ -111,13 +111,13 @@ defmodule Chess.Board do
     end
   end
 
-  defp calculate_check_once(board, color) do
-    my_pieces = Enum.filter(board, fn piece -> piece.color == color end)
+  defp calculate_check_once(board, attacking_color) do
+    my_pieces = Enum.filter(board, fn piece -> piece.color == attacking_color end)
 
     enemy_king =
       get_king(
         board,
-        case color do
+        case attacking_color do
           :black -> :white
           :white -> :black
         end
