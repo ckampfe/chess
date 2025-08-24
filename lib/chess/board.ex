@@ -65,32 +65,30 @@ defmodule Chess.Board do
     end)
   end
 
-  def calculate_check(board) do
-    # for all pieces
-    # is the opposite king attacked
-    # if so, can the king move?
-    # if so, can the player attack the piece that is causing the check?
-    # (is attacking piece in the attacking moves of the player?)
-    # if the king can move, is it in check again?
-    # if the king cannot move out or all move outs are in check, checkmate
-    white_pieces = Enum.filter(board, fn piece -> piece.color == :white end)
-    black_king = get_king(board, :black)
-    king_position = Piece.position(black_king)
+  def calculate_check(board, color) do
+    my_pieces = Enum.filter(board, fn piece -> piece.color == color end)
 
-    # TODO we need Piece.moves and Piece.attacks,
-    # so we can get hypothetical attacks for all pieces
-    # AND PAWNS, since Piece.moves will not show a valid
-    # attack if there is no enemy piece there
-    all_white_moves =
-      white_pieces
+    enemy_king =
+      get_king(
+        board,
+        case color do
+          :white -> :black
+          :black -> :white
+        end
+      )
+
+    enemy_king_position = Piece.position(enemy_king)
+
+    all_my_moves =
+      my_pieces
       |> Enum.flat_map(fn
         %Pawn{} = piece -> Pawn.attacks_naive(piece)
         piece -> Piece.moves(piece, board)
       end)
       |> MapSet.new()
 
-    if MapSet.member?(all_white_moves, king_position) do
-      king_moves = Piece.moves(black_king, board)
+    if MapSet.member?(all_my_moves, enemy_king_position) do
+      king_moves = Piece.moves(enemy_king, board)
 
       cond do
         Enum.empty?(king_moves) ->
@@ -98,8 +96,9 @@ defmodule Chess.Board do
 
         Enum.all?(king_moves, fn king_move ->
           calculate_check_once(
-            move_piece(board, {black_king.column, black_king.row}, king_move)
-            |> elem(0)
+            move_piece(board, {enemy_king.column, enemy_king.row}, king_move)
+            |> elem(0),
+            color
           ) in [:check, :checkmate]
         end) ->
           :checkmate
@@ -112,28 +111,37 @@ defmodule Chess.Board do
     end
   end
 
-  defp calculate_check_once(board) do
-    white_pieces = Enum.filter(board, fn piece -> piece.color == :white end)
-    black_king = get_king(board, :black)
-    king_position = Piece.position(black_king)
+  defp calculate_check_once(board, color) do
+    my_pieces = Enum.filter(board, fn piece -> piece.color == color end)
 
-    all_white_moves =
-      white_pieces
+    enemy_king =
+      get_king(
+        board,
+        case color do
+          :black -> :white
+          :white -> :black
+        end
+      )
+
+    enemy_king_position = Piece.position(enemy_king)
+
+    all_my_moves =
+      my_pieces
       |> Enum.flat_map(fn
         %Pawn{} = piece -> Pawn.attacks_naive(piece)
         piece -> Piece.moves(piece, board)
       end)
       |> MapSet.new()
 
-    if MapSet.member?(all_white_moves, king_position) do
-      king_moves = Piece.moves(black_king, board)
+    if MapSet.member?(all_my_moves, enemy_king_position) do
+      king_moves = Piece.moves(enemy_king, board)
 
       cond do
         Enum.empty?(king_moves) ->
           :checkmate
 
         Enum.all?(king_moves, fn king_move ->
-          MapSet.member?(all_white_moves, king_move)
+          MapSet.member?(all_my_moves, king_move)
         end) ->
           :checkmate
 

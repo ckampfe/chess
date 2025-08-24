@@ -99,7 +99,13 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:chat_input_form, chat_input_form)
 
     socket =
-      case Board.calculate_check(board) do
+      case Board.calculate_check(
+             board,
+             case to_move do
+               :white -> :black
+               :black -> :white
+             end
+           ) do
         :checkmate ->
           socket
           |> assign(:to_move, nil)
@@ -285,7 +291,7 @@ defmodule ChessWeb.GameLive.Play do
               end
             end)
 
-          case Board.calculate_check(board) do
+          case Board.calculate_check(board, socket.assigns.playing_as) do
             :checkmate ->
               socket
               |> assign(:to_move, nil)
@@ -348,13 +354,20 @@ defmodule ChessWeb.GameLive.Play do
                     potential_move
                   )
 
-                case Board.calculate_check(board) do
+                case Board.calculate_check(
+                       board,
+                       case socket.assigns.playing_as do
+                         :white -> :black
+                         :black -> :white
+                       end
+                     ) do
                   :check -> nil
                   :checkmate -> nil
                   nil -> true
                 end
               end)
               |> MapSet.new()
+              |> dbg()
 
             if !Enum.empty?(moves_that_get_us_out_of_check) do
               socket
@@ -469,7 +482,13 @@ defmodule ChessWeb.GameLive.Play do
         end)
 
       socket =
-        case Board.calculate_check(board) do
+        case Board.calculate_check(
+               board,
+               case socket.assigns.playing_as do
+                 :black -> :white
+                 :white -> :black
+               end
+             ) do
           :checkmate ->
             socket
             |> assign(:to_move, nil)
