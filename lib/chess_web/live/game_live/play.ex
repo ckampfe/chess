@@ -127,68 +127,122 @@ defmodule ChessWeb.GameLive.Play do
       <h1 :if={@check_status}>{@check_status}</h1>
       <h3 class="m-4">to move: {@to_move}</h3>
       <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
-        <div id="takes" class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4">
-          <div>
-            <span :for={piece <- if(@playing_as == :white, do: @takes_black, else: @takes_white)}>
-              {Piece.repr(piece)}
-            </span>
-          </div>
-          <div>
-            <span :for={piece <- if(@playing_as == :white, do: @takes_white, else: @takes_black)}>
-              {Piece.repr(piece)}
-            </span>
-          </div>
-        </div>
-        <div id="board" class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center">
-          <div class="border-solid border-2 aspect-square min-w-80">
-            <div
-              :for={
-                {row, start_color} <-
-                  Enum.zip([@row_numbers, background_color_stream(:light)])
-              }
-              class="flex"
-            >
-              <span
-                :for={
-                  {column, square_color} <-
-                    Enum.zip([@column_numbers, background_color_stream(start_color)])
-                }
-                class={"
+        <.takes
+          playing_as={@playing_as}
+          takes_black={@takes_black}
+          takes_white={@takes_white}
+          class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4"
+        />
+        <.board
+          column_numbers={@column_numbers}
+          row_numbers={@row_numbers}
+          selected_piece={@selected_piece}
+          potential_moves={@potential_moves}
+          to_move={@to_move}
+          playing_as={@playing_as}
+          board={@board}
+          class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center"
+        />
+        <.chat
+          chat_messages={@chat_messages}
+          chat_input_form={@chat_input_form}
+          class="sm:order-1 sm:col-span-2 sm:max-h-screen"
+        />
+      </div>
+    </div>
+    """
+  end
+
+  attr :playing_as, :atom, values: [:black, :white]
+  attr :takes_black, :list
+  attr :takes_white, :list
+  attr :rest, :global
+
+  def takes(assigns) do
+    ~H"""
+    <div id="takes" {@rest}>
+      <div>
+        <span :for={piece <- if(@playing_as == :white, do: @takes_black, else: @takes_white)}>
+          {Piece.repr(piece)}
+        </span>
+      </div>
+      <div>
+        <span :for={piece <- if(@playing_as == :white, do: @takes_white, else: @takes_black)}>
+          {Piece.repr(piece)}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  attr :board, :list
+  attr :playing_as, :atom, values: [:black, :white]
+  attr :to_move, :atom, values: [:black, :white]
+  attr :potential_moves, MapSet
+  attr :selected_piece, Piece
+  attr :column_numbers, :list
+  attr :row_numbers, :list
+  attr :rest, :global
+
+  def board(assigns) do
+    ~H"""
+    <div id="board" {@rest}>
+      <div class="border-solid border-2 aspect-square min-w-80">
+        <div
+          :for={
+            {row, start_color} <-
+              Enum.zip([@row_numbers, background_color_stream(:light)])
+          }
+          class="flex"
+        >
+          <span
+            :for={
+              {column, square_color} <-
+                Enum.zip([@column_numbers, background_color_stream(start_color)])
+            }
+            class={"
             #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
             flex basis-1/8 aspect-square select-none items-center justify-center"}
-                phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
-              >
-                {if piece = Board.get_piece(@board, {column, row}) do
-                  Piece.repr(piece)
-                else
-                  ""
-                end}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div id="chat" class="sm:order-1 sm:col-span-2 sm:max-h-screen">
-          <div
-            class="overflow-y-scroll max-h-72 sm:max-h-8/10"
-            id="chat-scroller"
-            phx-hook="ScrollToBottom"
+            phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
           >
-            <div :for={message <- @chat_messages}>
-              <div>
-                <span class="text-lg">{message.who}</span>
-                <span class="text-xs">{message.timestamp}</span>
-              </div>
-              <div>{message.body}</div>
-            </div>
-          </div>
-          <.form for={@chat_input_form} phx-change="update-chat-input" phx-submit="send-chat-message">
-            <.input type="text" field={@chat_input_form[:chat_input]} required />
-            <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-              Send
-            </button>
-          </.form>
+            {if piece = Board.get_piece(@board, {column, row}) do
+              Piece.repr(piece)
+            else
+              ""
+            end}
+          </span>
         </div>
       </div>
+    </div>
+    """
+  end
+
+  attr :chat_input_form, Phoenix.HTML.Form
+  attr :chat_messages, :list
+  attr :rest, :global
+
+  def chat(assigns) do
+    ~H"""
+    <div id="chat" {@rest}>
+      <div
+        class="overflow-y-scroll max-h-72 sm:max-h-8/10"
+        id="chat-scroller"
+        phx-hook="ScrollToBottom"
+      >
+        <div :for={message <- @chat_messages}>
+          <div>
+            <span class="text-lg">{message.who}</span>
+            <span class="text-xs">{message.timestamp}</span>
+          </div>
+          <div>{message.body}</div>
+        </div>
+      </div>
+      <.form for={@chat_input_form} phx-change="update-chat-input" phx-submit="send-chat-message">
+        <.input type="text" field={@chat_input_form[:chat_input]} required />
+        <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+          Send
+        </button>
+      </.form>
     </div>
     """
   end
