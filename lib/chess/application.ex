@@ -14,9 +14,7 @@ defmodule Chess.Application do
        repos: Application.fetch_env!(:chess, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:chess, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Chess.PubSub},
-      # Start a worker by calling: Chess.Worker.start_link(arg)
-      # {Chess.Worker, arg},
-      # Start to serve requests, typically the last entry
+      {Registry, keys: :duplicate, name: Chess.Registry},
       ChessWeb.Endpoint
     ]
 

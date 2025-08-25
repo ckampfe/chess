@@ -27,19 +27,44 @@ defmodule ChessWeb.GameLive.Play do
   def mount(params, _session, socket) do
     params_types = %{
       game_id: Ecto.UUID,
-      playing_as: Ecto.ParameterizedType.init(Ecto.Enum, values: [:white, :black])
+      playing_as: Ecto.ParameterizedType.init(Ecto.Enum, values: [:white, :black, :spectate])
     }
 
-    %{game_id: game_id, playing_as: playing_as} =
+    validated_params =
       Ecto.Changeset.cast({%{}, params_types}, params, Map.keys(params_types))
-      |> Ecto.Changeset.validate_required(Map.keys(params_types))
+      |> Ecto.Changeset.validate_required([:game_id])
       |> Ecto.Changeset.apply_action!(nil)
 
-    game_topic = "#{game_id}:game_events"
+    game_id = Map.fetch!(validated_params, :game_id)
+    playing_as = Map.get(validated_params, :playing_as)
 
-    :ok = Phoenix.PubSub.subscribe(Chess.PubSub, game_topic)
+    if playing_as && connected?(socket) do
+      case Registry.lookup(Chess.Registry, game_id) do
+        [] ->
+          Registry.register(Chess.Registry, game_id, playing_as)
 
-    Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, playing_as})
+        entries ->
+          if Enum.any?(entries, fn {other_pid, other_playing_as} ->
+               other_pid != self() && other_playing_as != :spectate &&
+                 other_playing_as == playing_as
+             end) do
+            # figure out how to error, we are trying to double register
+            raise "TODO; cannot play as already claimed color - this is a bug"
+          else
+            Registry.register(Chess.Registry, game_id, playing_as)
+          end
+      end
+    end
+
+    game_topic = "#{validated_params.game_id}:game_events"
+
+    if connected?(socket) do
+      :ok = Phoenix.PubSub.subscribe(Chess.PubSub, game_topic)
+    end
+
+    if playing_as && connected?(socket) do
+      Phoenix.PubSub.broadcast(Chess.PubSub, game_topic, {:playing_as, playing_as})
+    end
 
     board = Board.new()
 
@@ -64,6 +89,29 @@ defmodule ChessWeb.GameLive.Play do
       |> select([m], %{timestamp: m.inserted_at, who: m.who, body: m.body})
       |> Repo.all()
 
+    largest_spectator_id =
+      ChatMessage
+      |> where([m], m.game_id == ^game_id)
+      |> where([m], like(m.who, "spectate%"))
+      |> order_by([m], desc: m.inserted_at)
+      |> select([m], fragment("substring(?, 10, -1)", m.who))
+      |> limit(1)
+      |> Repo.one()
+
+    spectator_id =
+      if largest_spectator_id do
+        String.to_integer(largest_spectator_id) + 1
+      else
+        1
+      end
+
+    nick =
+      if playing_as == :spectate do
+        "spectate#{spectator_id}"
+      else
+        to_string(playing_as)
+      end
+
     {board, takes} = Board.update_with_moves(board, moves)
 
     takes_by_color =
@@ -79,6 +127,27 @@ defmodule ChessWeb.GameLive.Play do
       end
 
     chat_input_form = to_form(%{"input" => {}})
+
+    uri = Phoenix.LiveView.get_connect_info(socket, :uri)
+
+    game_link =
+      if uri do
+        if uri.port do
+          "#{uri.scheme}://#{uri.host}:#{uri.port}/games/#{game_id}/play"
+        else
+          "#{uri.scheme}://#{uri.host}/games/#{game_id}/play"
+        end
+      else
+        ""
+      end
+
+    claimed_colors =
+      Chess.Registry
+      |> Registry.lookup(game_id)
+      |> Enum.map(fn {_pid, claimed_color} -> claimed_color end)
+      |> MapSet.new()
+
+    available_to_play_as = MapSet.difference(MapSet.new([:black, :white]), claimed_colors)
 
     socket =
       socket
@@ -97,6 +166,9 @@ defmodule ChessWeb.GameLive.Play do
       |> assign(:potential_moves, MapSet.new())
       |> assign(:chat_messages, chat_messages)
       |> assign(:chat_input_form, chat_input_form)
+      |> assign(:game_link, game_link)
+      |> assign(:available_to_play_as, available_to_play_as)
+      |> assign(:nick, nick)
 
     socket =
       case Board.calculate_check(
@@ -124,31 +196,67 @@ defmodule ChessWeb.GameLive.Play do
   def render(assigns) do
     ~H"""
     <div class="max-h-screen m-2">
-      <h1 :if={@check_status}>{@check_status}</h1>
-      <h3 class="m-4">to move: {@to_move}</h3>
-      <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
-        <.takes
-          playing_as={@playing_as}
-          takes_black={@takes_black}
-          takes_white={@takes_white}
-          class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4"
+      <%= if @playing_as do %>
+        <a
+          class="underline text-blue-600 hover:text-blue-800 visited:text-purple-600"
+          phx-click={JS.dispatch("phx:copy", to: "#game-link")}
+        >
+          copy game link to clipboard
+        </a>
+        <input
+          :if={@game_link}
+          type="hidden"
+          value={@game_link}
+          id="game-link"
         />
-        <.board
-          column_numbers={@column_numbers}
-          row_numbers={@row_numbers}
-          selected_piece={@selected_piece}
-          potential_moves={@potential_moves}
-          to_move={@to_move}
-          playing_as={@playing_as}
-          board={@board}
-          class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center"
-        />
-        <.chat
-          chat_messages={@chat_messages}
-          chat_input_form={@chat_input_form}
-          class="sm:order-1 sm:col-span-2 sm:max-h-screen"
-        />
-      </div>
+
+        <h1 :if={@check_status}>{@check_status}</h1>
+        <h3 class="m-4">to move: {@to_move}</h3>
+        <div class="sm:grid sm:grid-cols-7 sm:grid-rows-1 gap-4">
+          <.takes
+            playing_as={@playing_as}
+            takes_black={@takes_black}
+            takes_white={@takes_white}
+            class="sm:order-3 sm:col-span-1 grid grid-cols-1 gap-y-4"
+          />
+          <.board
+            column_numbers={@column_numbers}
+            row_numbers={@row_numbers}
+            selected_piece={@selected_piece}
+            potential_moves={@potential_moves}
+            to_move={@to_move}
+            playing_as={@playing_as}
+            board={@board}
+            class="sm:order-2 sm:col-span-4 m-6 sm:m-2 items-center justify-center"
+          />
+          <.chat
+            chat_messages={@chat_messages}
+            chat_input_form={@chat_input_form}
+            class="sm:order-1 sm:col-span-2 sm:max-h-screen"
+          />
+        </div>
+      <% else %>
+        <dialog
+          :if={!@playing_as}
+          phx-mounted={JS.dispatch("chess:show-modal")}
+          class="m-auto mt-8 rounded-xl bg-white p-6 shadow-3xl backdrop:bg-black/50 backdrop:backdrop-blur-md"
+        >
+          <p>Choose your character!</p>
+          <.button
+            href={~p"/games/#{@game_id}/play?playing_as=black"}
+            disabled={!MapSet.member?(@available_to_play_as, :black)}
+          >
+            Black
+          </.button>
+          <.button
+            href={~p"/games/#{@game_id}/play?playing_as=white"}
+            disabled={!MapSet.member?(@available_to_play_as, :white)}
+          >
+            White
+          </.button>
+          <.button href={~p"/games/#{@game_id}/play?playing_as=spectate"}>Spectate</.button>
+        </dialog>
+      <% end %>
     </div>
     """
   end
@@ -239,9 +347,9 @@ defmodule ChessWeb.GameLive.Play do
       </div>
       <.form for={@chat_input_form} phx-change="update-chat-input" phx-submit="send-chat-message">
         <.input type="text" field={@chat_input_form[:chat_input]} required />
-        <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        <.button>
           Send
-        </button>
+        </.button>
       </.form>
     </div>
     """
@@ -454,11 +562,7 @@ defmodule ChessWeb.GameLive.Play do
     out =
       %ChatMessage{
         game_id: socket.assigns.game_id,
-        who:
-          case socket.assigns.playing_as do
-            :white -> "white"
-            :black -> "black"
-          end,
+        who: socket.assigns.nick,
         body: chat_input
       }
       |> Repo.insert!(returning: [:inserted_at, :who, :body])
@@ -475,15 +579,15 @@ defmodule ChessWeb.GameLive.Play do
     Phoenix.PubSub.broadcast(
       Chess.PubSub,
       socket.assigns.game_topic,
-      {:chat_message, chat_message, socket.assigns.playing_as}
+      {:chat_message, chat_message, socket.assigns.nick}
     )
 
     {:noreply, socket}
   end
 
-  def handle_info({:chat_message, chat_message, who}, socket) do
+  def handle_info({:chat_message, chat_message, nick}, socket) do
     socket =
-      if who != socket.assigns.playing_as do
+      if nick != socket.assigns.nick do
         Phoenix.Component.update(socket, :chat_messages, fn chat_messages ->
           chat_messages ++ [chat_message]
         end)
