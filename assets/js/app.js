@@ -98,3 +98,12 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
+
+window.addEventListener("phx:copy", (event) => {
+  let text = event.target.value;
+  navigator.clipboard.writeText(text).then(() => { })
+})
+
+document.addEventListener('chess:show-modal', function (event) {
+  event.target.showModal();
+});
