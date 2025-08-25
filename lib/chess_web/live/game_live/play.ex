@@ -14,6 +14,7 @@
 # - [x] fix board being incorrectly mirrored. is this only
 #       a view problem, or a data storage problem?
 # - [x] fix allowing moves that do not get king out of check
+# - [ ] do not allow the king to move into check
 
 defmodule ChessWeb.GameLive.Play do
   use ChessWeb, :live_view
