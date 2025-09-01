@@ -20,6 +20,8 @@ defmodule ChessWeb.Router do
     live "/", GameLive.New
     live "/games/new", GameLive.New
     live "/games/:game_id/play", GameLive.Play
+
+    get "/stats", StatsController, :index
   end
 
   # Other scopes may use custom stacks.
