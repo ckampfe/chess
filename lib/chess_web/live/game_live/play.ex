@@ -298,19 +298,13 @@ defmodule ChessWeb.GameLive.Play do
     <div id="board" {@rest}>
       <div class="border-solid border-2 aspect-square min-w-80">
         <div
-          :for={
-            {row, start_color} <-
-              Enum.zip([@row_numbers, background_color_stream(:light)])
-          }
+          :for={row <- @row_numbers}
           class="flex"
         >
           <span
-            :for={
-              {column, square_color} <-
-                Enum.zip([@column_numbers, background_color_stream(start_color)])
-            }
+            :for={column <- @column_numbers}
             class={"
-            #{background_color({column, row}, @selected_piece, @potential_moves, square_color)}
+            #{background_color({column, row}, @selected_piece, @potential_moves, if(rem(column + row, 2) == 0, do: :dark, else: :light))}
             flex basis-1/8 aspect-square select-none items-center justify-center"}
             phx-click={@to_move == @playing_as && "select-position-#{column}-#{row}"}
           >
@@ -690,12 +684,5 @@ defmodule ChessWeb.GameLive.Play do
       true ->
         "bg-gray-400"
     end
-  end
-
-  defp background_color_stream(start_color) do
-    Stream.iterate(start_color, fn
-      :light -> :dark
-      :dark -> :light
-    end)
   end
 end
